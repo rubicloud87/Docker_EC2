@@ -1,18 +1,39 @@
+data "aws_ami" "ubuntu" {
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"] # Ubuntu 22.04 AMI pattern
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["471112739829"] # Canonical's AWS account ID
+}
+
 resource "aws_instance" "strapi" {
-  ami                         = "ami-0f30a9c3a48f3fa79"
+  ami                         = data.aws_ami.ubuntu.id
   instance_type               = "t2.medium"
-  subnet_id                   = "subnet-0f8632da3b474a417"
-  vpc_security_group_ids      = [aws_security_group.strapi_sg.id]
-  key_name                    = "strapi_key2"
+  subnet_id              = "subnet-0f8632da3b474a417"
+  vpc_security_group_ids = [aws_security_group.strapi_sg.id]
+  key_name = "strapi_key2"
   associate_public_ip_address = true
   user_data                   = <<-EOF
                                 #!/bin/bash
                                 sudo apt update
-                                sudo apt update && sudo apt install docker.io docker-compose -y
-                                sudo systemctl enable docker && sudo usermod -aG docker $USER
-                                git clone https://github.com/rubicloud87/Docker_EC2.git
-                                cd Docker_EC2
-                                docker-compose up -d
+                                curl -fsSL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh
+                                sudo bash -E nodesource_setup.sh
+                                sudo apt update && sudo apt install nodejs -y
+                                sudo npm install -g yarn && sudo npm install -g pm2
+                                echo -e "skip\n" | npx create-strapi-app simple-strapi --quickstart
+                                cd simple-strapi
+                                echo "const strapi = require('@strapi/strapi');
+                                strapi().start();" > server.js
+                                pm2 start server.js --name strapi
+                                pm2 save && pm2 startup
                                 sleep 360
                                 EOF
 
@@ -21,7 +42,7 @@ resource "aws_instance" "strapi" {
   }
 }
 
-
+ 
 
 resource "aws_security_group" "strapi_sg" {
   name        = "ec2-SG-strapi"
@@ -45,7 +66,7 @@ resource "aws_security_group" "strapi_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"] # Replace with your specific IP or range
   }
-  // Outbound rules (egress)
+    // Outbound rules (egress)
   egress {
     description = "Allow all outbound traffic"
     from_port   = 0
@@ -59,4 +80,4 @@ output "instance_ip" {
   value = aws_instance.strapi.public_ip
 }
 
-
+ 
